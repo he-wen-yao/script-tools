@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 # headers中添加上content-type这个参数，指定为json格式
 headers = {'Content-Type': 'application/json'}
-web_hook = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxxx"
+web_hook = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxxxxxxxxx"
 
 
 def send_message(message_title, message_list):
@@ -61,7 +61,7 @@ def send_warning_message(title, warning_message):
 
 try:
     pool = redis.ConnectionPool(
-        host='xxxxxxxxxxx', port=6379, decode_responses=True)
+        host='xxxxxxxxxxxxxxxxx', port=6379, decode_responses=True)
     redisDB = redis.Redis(connection_pool=pool)
     # 在创建连接后执行一个查询操作
     redisDB.client_list()
@@ -141,6 +141,35 @@ def baidu_hot_brand():
     send_message(f"{now} - 百度热搜", temp_list)
 
 
+def zhihu_brand():
+    request_headers = {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36"
+    }
+    zhihu_brand_url = "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/total?limit=50&desktop=true&reverse_order=0"
+    res = requests.get(url=zhihu_brand_url,
+                       headers=request_headers, verify=False)
+    res = res.json()
+    hot_brand_list = res['data']
+    push_message_list = []
+    for item in hot_brand_list:
+        temp_item = item['target']
+        title = temp_item['title']
+        curr_value = temp_item['answer_count'] + temp_item['follower_count']
+        key = f"zhihu_{title}"
+        value = getKey(key)
+        old_value = 0 if not value else int(value)
+        if not old_value or curr_value > old_value:
+            setKey(key, curr_value)
+            push_message_list.append([{
+                "tag": "a",
+                "text": f"【知乎热搜】{title}",
+                "href": temp_item['url']
+            }])
+    now = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
+    send_message(f"{now} - 知乎热搜", push_message_list)
+
+
 if __name__ == "__main__":
     weibo_hot_brand()
     baidu_hot_brand()
+    zhihu_brand()
