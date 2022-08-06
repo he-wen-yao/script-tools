@@ -33,7 +33,7 @@ def article_list_by_uid(uid, page):
         for item_ in item['url_struct']:
             key = f"baidu_article_{item_['url_title']}"
             if not redis_util.getKey(key):
-                redis_util.setKey(key, 1)
+                redis_util.setKeyExpire(key, 1)
                 push_message_list.append([{
                     "tag": "a",
                     "text": f"【文章】{item_['url_title']}",
@@ -57,7 +57,7 @@ def weibo_hot_brand():
         for item in message_list:
             key = f"weibo_{item['word']}"
             if not redis_util.getKey(key):
-                redis_util.setKey(key, 1)
+                redis_util.setKeyExpire(key, 1)
                 temp_list.append([{
                     "tag": "a",
                     "text": f"【{item.get('category', '无分类')}】{item['word']}",
@@ -81,19 +81,18 @@ def baidu_hot_brand():
 
     def deal(item):
         a = item.find("a")
-        herf = a.get("href")
+        href = a.get("href")
         div = item.select(".c-single-text-ellipsis")[0]
         text = div.text
         key = f"baidu_{text}"
         if not redis_util.getKey(key):
-            redis_util.setKey(key, 1)
+            redis_util.setKeyExpire(key, 1)
             return [{
                 "tag": "a",
                 "text": f"【百度热搜】{text}",
-                "href": herf
+                "href": href
             }]
         return None
-
     temp_list = []
     for item in hot_list:
         temp_item = deal(item)
@@ -116,12 +115,17 @@ def zhihu_brand():
     for item in hot_brand_list:
         temp_item = item['target']
         title = temp_item['title']
-        curr_value = temp_item['answer_count'] + temp_item['follower_count']
+        # 当前热点的回答数量
+        answer_count = temp_item['answer_count']
         key = f"zhihu_{title}"
+        # 取出上一次该热点的回答数
         value = redis_util.getKey(key)
-        old_value = 0 if not value else int(value)
-        if not old_value or curr_value > old_value + 100:
-            redis_util.setKey(key, curr_value)
+        old_answer_count = 0 if not value else int(value)
+        # 如果当前热点没有存过 redis 或者 回答数量比上次多 50 个，则就更新回答数以及推送热点
+        if not old_answer_count or (answer_count - old_answer_count) >= 50:
+            # 设置新的过期时间
+            redis_util.setKeyExpire(key, answer_count)
+            # 放进推送列表
             push_message_list.append([{
                 "tag": "a",
                 "text": f"【知乎热搜】{title}",

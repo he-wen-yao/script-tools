@@ -5,7 +5,7 @@ import log_util
 
 
 headers = {'Content-Type': 'application/json'}
-web_hook = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+web_hook = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxx"
 
 
 def send_message(message_title, message_list):
