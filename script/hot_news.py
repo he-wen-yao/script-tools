@@ -2,88 +2,49 @@
 爬取微博平台热榜
 """
 import requests
-import json
 import time
-import io
-import sys
-import redis
+import redis_util
+import feishu_util
 from bs4 import BeautifulSoup
-
-# headers中添加上content-type这个参数，指定为json格式
-headers = {'Content-Type': 'application/json'}
-web_hook = "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-
-def send_message(message_title, message_list):
-    if len(message_list) == 0:
-        return
-    data = {
-        "email": "he.wenyao@qq.com",
-        "msg_type": "post",
-        "content": {
-            "post": {
-                "zh_cn": {
-                    "title": message_title,
-                    "content": message_list
-                }
-            }
-        }
-    }
-    res = requests.post(url=web_hook, headers=headers, data=json.dumps(data))
-
-
-def send_warning_message(title, warning_message):
-    """
-    发送报警消息
-    title : 警告标题
-    """
-    data = {
-        "msg_type": "interactive",
-        "card": {
-            "config": {
-                "wide_screen_mode": True,
-                "enable_forward": True
-            },
-            "header": {
-                "template": "red",
-                "title": {"content": title, "tag": "plain_text"}
-            },
-            "i18n_elements": {
-                "zh_cn": [{
-                    "tag": "div",
-                    "text": {"content": warning_message, "tag": "lark_md"}
-                }]
-            }
-        }
-    }
-    res = requests.post(url=web_hook, headers=headers, data=json.dumps(data))
-
-
-try:
-    pool = redis.ConnectionPool(
-        host='xxxxxxxxxxxxxxxxx', port=6379, decode_responses=True)
-    redisDB = redis.Redis(connection_pool=pool)
-    # 在创建连接后执行一个查询操作
-    redisDB.client_list()
-except Exception as e:
-    send_warning_message("紧急预警 - Redis 连接异常", str(e))
-    exit()
-
-
-def setKey(title, value, expire=60 * 60 * 24):
-    return redisDB.setex(title, expire, value)
-
-
-def getKey(title):
-    return redisDB.get(title)
 
 
 # 改变标准输出的默认编码
 # sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf8')
 
 
+def article_list_by_uid(uid, page):
+    """
+    获取指定微博用户的文章
+    uid : 用户ID
+    page: 第几页文章
+    feature: 10 代表获取文章
+    """
+    user_article_url = f"https://weibo.com/ajax/statuses/mymblog"
+    headers = {
+        "cookie": "SINAGLOBAL=7184263238970.686.1644755393941; UOR=,,link.zhihu.com; SUBP=0033WrSXqPxfM725Ws9jqgMF55529P9D9WWPqpBgMBpcyyhnCb9vcCeB5JpX5KMhUgL.FoqXS0-cSKzNSoM2dJLoIp7LxKML1KBLBKnLxKqL1hnLBoMcShMfSo-ES0qN; ULV=1659712250649:32:5:6:1861997161683.917.1659712250477:1659617022959; PC_TOKEN=d194dd7b4e; ALF=1691298818; SSOLoginState=1659762818; SCF=AgX31d3T5E9dQTjT9p2ak3DpeEcJT3EUfzMOL0ZwSmcHFzDqOLcuoTpv-UdSevY__qMUSM7joapSHyRV3mL9G1s.; SUB=_2A25P6YjSDeRhGeBK7FcX9SzLzTuIHXVsnv0arDV8PUNbmtAKLWjTkW9NR5gbmQtZNKNx5kZrxBd7wazTinHFMtAV; XSRF-TOKEN=hKXBYdf63pvlBmvXdsSO1yJO; WBPSESS=KoUoLReqegcHLJn5iYh1z31dAXII0F6--r4GjD3XEesldpZ3ilZcI4ECQIRcM5UzGRCZ3d6nbmDSZbKB97f3o_2HZQQIhWtqV-NT5qLvHqwGaTs7BeBfLnl7CeURmDfW7Rjg5algSTaF6_FQ0LptGQ==",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36",
+    }
+    params = {"uid": uid, "page": page, "feature": 10}
+    res = requests.get(url=user_article_url, headers=headers, params=params)
+    res = res.json()
+    data = res['data']['list']
+    push_message_list = []
+    for item in data:
+        for item_ in item['url_struct']:
+            key = f"baidu_article_{item_['url_title']}"
+            if not redis_util.getKey(key):
+                redis_util.setKey(key, 1)
+                push_message_list.append([{
+                    "tag": "a",
+                    "text": f"【文章】{item_['url_title']}",
+                    "href": f"{item_['short_url']}"
+                }])
+    now = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
+    feishu_util.send_message(f"{now} - 人民日报", push_message_list)
+
+
 def weibo_hot_brand():
-  # 微博热榜接口
+    # 微博热榜接口
     weibo_hot_brand_url = "https://weibo.com/ajax/statuses/hot_band"
     res = requests.get(weibo_hot_brand_url)
     res = res.json()
@@ -95,15 +56,15 @@ def weibo_hot_brand():
         temp_list = []
         for item in message_list:
             key = f"weibo_{item['word']}"
-            if not getKey(key):
-                setKey(key, 1)
+            if not redis_util.getKey(key):
+                redis_util.setKey(key, 1)
                 temp_list.append([{
                     "tag": "a",
                     "text": f"【{item.get('category', '无分类')}】{item['word']}",
-                    "href": f"https://s.weibo.com/weibo?q=%23{ item['word'] }%23"
+                    "href": f"https://s.weibo.com/weibo?q=%23{item['word']}%23"
                 }])
     now = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
-    send_message(f"{now} - 微博热搜", temp_list)
+    feishu_util.send_message(f"{now} - 微博热搜", temp_list)
 
 
 def baidu_hot_brand():
@@ -124,21 +85,22 @@ def baidu_hot_brand():
         div = item.select(".c-single-text-ellipsis")[0]
         text = div.text
         key = f"baidu_{text}"
-        if not getKey(key):
-            setKey(key, 1)
+        if not redis_util.getKey(key):
+            redis_util.setKey(key, 1)
             return [{
                 "tag": "a",
                 "text": f"【百度热搜】{text}",
                 "href": herf
             }]
         return None
+
     temp_list = []
     for item in hot_list:
         temp_item = deal(item)
         if temp_item:
             temp_list.append(temp_item)
     now = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
-    send_message(f"{now} - 百度热搜", temp_list)
+    feishu_util.send_message(f"{now} - 百度热搜", temp_list)
 
 
 def zhihu_brand():
@@ -156,20 +118,21 @@ def zhihu_brand():
         title = temp_item['title']
         curr_value = temp_item['answer_count'] + temp_item['follower_count']
         key = f"zhihu_{title}"
-        value = getKey(key)
+        value = redis_util.getKey(key)
         old_value = 0 if not value else int(value)
-        if not old_value or curr_value > old_value:
-            setKey(key, curr_value)
+        if not old_value or curr_value > old_value + 100:
+            redis_util.setKey(key, curr_value)
             push_message_list.append([{
                 "tag": "a",
                 "text": f"【知乎热搜】{title}",
-                "href": temp_item['url']
+                "href": f"https://www.zhihu.com/question/{temp_item['id']}"
             }])
     now = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
-    send_message(f"{now} - 知乎热搜", push_message_list)
+    feishu_util.send_message(f"{now} - 知乎热搜", push_message_list)
 
 
 if __name__ == "__main__":
     weibo_hot_brand()
     baidu_hot_brand()
     zhihu_brand()
+    article_list_by_uid(2803301701, 1)
