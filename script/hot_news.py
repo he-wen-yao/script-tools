@@ -140,7 +140,7 @@ def zhihu_brand():
 
 
 if __name__ == "__main__":
-    # weibo_hot_brand()
-    # baidu_hot_brand()
-    # zhihu_brand()
+    weibo_hot_brand()
+    baidu_hot_brand()
+    zhihu_brand()
     article_list_by_uid(2803301701, 1)
