@@ -5,6 +5,7 @@ import requests
 import time
 import redis_util
 import feishu_util
+from urllib import parse
 from bs4 import BeautifulSoup
 
 
@@ -55,13 +56,16 @@ def weibo_hot_brand():
         message_list = data['band_list']
         temp_list = []
         for item in message_list:
+            break
             key = f"weibo_{item['word']}"
             if not redis_util.getKey(key):
                 redis_util.setKeyExpire(key, 1)
+                # 将话题进行编码，在飞书手机端为编码不能访问
+                keyword = parse.quote(f"#{item['word']}#")
                 temp_list.append([{
                     "tag": "a",
                     "text": f"【{item.get('category', '无分类')}】{item['word']}",
-                    "href": f"https://s.weibo.com/weibo?q=%23{item['word']}%23"
+                    "href": f"https://s.weibo.com/weibo?q={keyword}"
                 }])
     now = time.strftime("%Y-%m-%d-%H:%M:%S", time.localtime())
     feishu_util.send_message(f"{now} - 微博热搜", temp_list)
@@ -136,7 +140,7 @@ def zhihu_brand():
 
 
 if __name__ == "__main__":
-    weibo_hot_brand()
-    baidu_hot_brand()
-    zhihu_brand()
+    # weibo_hot_brand()
+    # baidu_hot_brand()
+    # zhihu_brand()
     article_list_by_uid(2803301701, 1)
